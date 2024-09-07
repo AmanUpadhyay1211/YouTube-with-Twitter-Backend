@@ -1,4 +1,4 @@
-class apiError extends Error {
+export class ApiError extends Error {
   constructor(
     message = "Something went wrong",
     data,
@@ -21,4 +21,4 @@ class apiError extends Error {
   }
 }
 
-export {apiError}
+
