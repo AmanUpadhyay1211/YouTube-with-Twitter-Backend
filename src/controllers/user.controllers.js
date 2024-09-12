@@ -2,7 +2,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.model.js";
-import { uploadOnCloudinary } from "../services/cloudinary.service.js";
+import { uploadOnCloudinary,deleteFromCloudinary } from "../services/cloudinary.service.js";
+import jwt from "jsonwebtoken";
 
 const registerUser = asyncHandler(async (req, res) => {
   const { userName, fullName, email, password } = req.body;
@@ -65,11 +66,12 @@ const registerUser = asyncHandler(async (req, res) => {
   if (!user) {
     throw new ApiError(500, "Inmternal server error Failed to create user");
   } else {
-    res
+    return res
       .status(201)
       .json(new ApiResponse(201, user, "User registered successfully"));
   }
 });
+
 
 const loginUser = asyncHandler(async (req, res) => {
   const { email, userName, password } = req.body;
@@ -82,8 +84,8 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Password is required");
   }
 
-  let userInDB = await User.findOne({ 
-    $or: [{ email }, { userName }] 
+  let userInDB = await User.findOne({
+    $or: [{ email }, { userName }],
   });
 
   if (!userInDB) {
@@ -118,53 +120,60 @@ const loginUser = asyncHandler(async (req, res) => {
     .status(201)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
-    .json(new ApiResponse(201, 
-      {
-        user: userInDB,
-        accessToken,
-        refreshToken,
-      },
-      "User logged in successfully"
-    ));
+    .json(
+      new ApiResponse(
+        201,
+        {
+          user: userInDB,
+          accessToken,
+          refreshToken,
+        },
+        "User logged in successfully"
+      )
+    );
 });
+ 
 
-const logoutUser = asyncHandler(async(req,res)=>{
-  const userID = req.user._id
-  
- await User.findByIdAndUpdate(userID, 
+const logoutUser = asyncHandler(async (req, res) => {
+  const userID = req.user._id;
+
+  await User.findByIdAndUpdate(
+    userID,
     {
-        $unset:{
-            refreshToken:1
-         }
+      $unset: {
+        refreshToken: 1,
+      },
     },
     {
       new: true,
     }
-)
+  );
 
-const options = {
-  httpOnly: true,
-  secure: true,
-  expires: new Date(0),
-}
+  const options = {
+    httpOnly: true,
+    secure: true,
+    expires: new Date(0),
+  };
 
-res
-.status(200)
-.cookie("accessToken", "", options)
-.cookie("refreshToken", "", options)
-.json(new ApiResponse(200, {}, "User logged out successfully"))
-})
+  return res
+    .status(200)
+    .cookie("accessToken", "", options)
+    .cookie("refreshToken", "", options)
+    .json(new ApiResponse(200, {}, "User logged out successfully"));
+});
 
-const regenerateAccessAndRefreshToken = asyncHandler(async (req, res) => {
-  const browserRefreshToken = req.cookies?.refreshToken || req.body.refreshToken;
-  
+
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  const browserRefreshToken =
+    req.cookies?.refreshToken || req.body.refreshToken;
+
   if (!browserRefreshToken) {
     throw new ApiError(404, "Refresh Token not found");
   }
 
   let decodedToken;
   try {
-    decodedToken = jwt.verify(browserRefreshToken, envConf.refreshTokenSecret); 
+    decodedToken = jwt.verify(browserRefreshToken, envConf.refreshTokenSecret);
   } catch (error) {
     throw new ApiError(401, "Invalid or Expired Refresh Token");
   }
@@ -196,24 +205,142 @@ const regenerateAccessAndRefreshToken = asyncHandler(async (req, res) => {
 
   const options = {
     httpOnly: true,
-    secure: true, 
-    sameSite: 'Strict',  // Prevent CSRF attacks
+    secure: true,
+    sameSite: "Strict", // Prevent CSRF attacks
   };
 
-  res
+  return res
     .status(201)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
-    .json(new ApiResponse(
-      201,
-      {
-        user: userInDB,
-        accessToken,
-        refreshToken,
-      },
-      "New Access and Refresh tokens generated!"
-    ));
+    .json(
+      new ApiResponse(
+        201,
+        {
+          user: userInDB,
+          accessToken,
+          refreshToken,
+        },
+        "New Access and Refresh tokens generated!"
+      )
+    );
 });
 
 
-export { registerUser,loginUser,logoutUser,regenerateAccessAndRefreshToken };
+const getCurrentUser = asyncHandler(async (req, res) => {
+  const currentUser = req.user;
+  if (!currentUser) throw new ApiError(500, "Cannot find current user");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, currentUser, "Current User Found"));
+});
+
+
+const updateUserAvatar = asyncHandler(async (req, res) => {
+  const userID = req.user?._id;
+  const newAvatarLocalPath = req.file?.path;  // Get the local path of the uploaded file
+
+  if (!newAvatarLocalPath) throw new ApiError(404, "New Avatar File is required");
+
+  const user = await User.findById(userID);
+  if (!user) throw new ApiError(500, "Cannot find user");
+
+  // Upload the new avatar to Cloudinary
+  const newAvatar = await uploadOnCloudinary(newAvatarLocalPath);
+
+  if (!newAvatar) throw new ApiError(500, "Error while uploading new avatar");
+
+  // Delete old avatar from Cloudinary if it exists
+  if (user.avatar) {
+    await deleteFromCloudinary(user.avatar); 
+  }
+
+  const userWithUpdatedAvatar = await User.findByIdAndUpdate(
+    userID,
+    { avatar: newAvatar.secure_url },
+    { new: true }
+  );
+  if (!userWithUpdatedAvatar) throw new ApiError(500, "Failed to update avatar in the database.");
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, userWithUpdatedAvatar, "Avatar Updated Successfully"));
+});
+
+
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+  const userID = req.user?._id;
+  const newCoverImageLocalPath = req.file?.path; 
+
+  if (!newCoverImageLocalPath) throw new ApiError(400, "No cover image file provided.");
+
+  const user = await User.findById(userID);
+  if (!user) throw new ApiError(404, "User not found.");
+
+  // Upload the new image to Cloudinary
+  const newCoverImage = await uploadOnCloudinary(newCoverImageLocalPath);
+
+  if (!newCoverImage) throw new ApiError(500, "Failed to upload cover image to Cloudinary.");
+
+  // Delete old cover image from Cloudinary if it exists
+  if (user.coverImage) {
+    await deleteFromCloudinary(user.coverImage); // Corrected variable name to user.coverImage
+  }
+
+  const userWithUpdatedCoverImage = await User.findByIdAndUpdate(
+    userID,
+    { coverImage: newCoverImage.secure_url },
+    { new: true }
+  );
+
+  if (!userWithUpdatedCoverImage) throw new ApiError(500, "Failed to update cover image in the database.");
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, userWithUpdatedCoverImage, "Cover image updated successfully."));
+});
+
+
+const updateUserPassword = asyncHandler(async(req,res)=>{
+      const userID = req.user._id
+      const {oldPassword , newPassword}= req.body
+      if(!oldPassword || !newPassword){
+        throw new ApiError(400,"Passwords field are required")
+      }
+      const user = await User.findById(userID)
+      if(!user) throw new ApiError(404,"Cannot find User")
+     
+    const isMatch = await user.isPasswordCorrect(oldPassword);
+    if(!isMatch) throw new ApiError(400,"Invalid Old Password")
+
+      const userWithUpdatedPassword = await User.findByIdAndUpdate(userID,
+        {password:newPassword},
+        {new:true}
+      ).select("-password -refreshToken")
+
+      return res
+      .status(200)
+      .json(200,{},"Password Updated Successfully")
+      
+})
+
+
+const updateUserAccountDetails = asyncHandler(async(req,res)=>{
+  const userID = req.user._id
+  /*I will degin this functionality later I am confuse that how i design this functionality
+  1: Make a single funtion to change all account details and it will only change the details which it will get from frontend but the problem is i want to perform some checks on some field, for example want to send an otp f user want to change email EventCounts..
+  2: Make a separate function for each details like updateName,updateEmail,updatePhone it will be more clean and easy to use but isn't it makes my code lengthy. */
+})
+
+
+
+export { registerUser,
+   loginUser, 
+   logoutUser, 
+   refreshAccessToken, 
+   getCurrentUser,
+   updateUserAvatar,
+   updateUserCoverImage,
+   updateUserPassword,
+  };

@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import envConf from "../envConf/envConf.js";
+import { cloudinaryFolder } from "../constants.js";
 
 cloudinary.config({
   cloud_name: envConf.cloudinaryCloudName,
@@ -11,7 +12,13 @@ cloudinary.config({
 export const uploadOnCloudinary = async (localFilePath) => {
     try {
         if(!localFilePath) return null;
-        const uploadResult = await cloudinary.uploader.upload(localFilePath, {resource_type : "auto"})
+
+        const uploadResult = await cloudinary.uploader.upload(
+            localFilePath,{
+                resource_type : "auto",
+                folder: cloudinaryFolder,
+            })
+
         fs.unlinkSync(localFilePath)
         return uploadResult;
     } catch (error) {
@@ -20,3 +27,19 @@ export const uploadOnCloudinary = async (localFilePath) => {
         return null
     }
 };
+
+
+export const deleteFromCloudinary = async (cloudinaryURL)=>{
+// https://res.cloudinary.com/amanupadhyay1211/image/upload/v1725902214/tgkz8xt3jxaewrsekoz6.png
+    const urlWithoutExtension = cloudinaryURL.split('.').slice(0, -1).join('.');
+    const publicId = urlWithoutExtension.split('/').pop();
+
+    try {
+        const result = await cloudinary.uploader.destroy(publicId);
+        return result;
+      } catch (error) {
+        console.log("Error deleting file from Cloudinary: ", error);
+        return null;
+      }
+
+}
