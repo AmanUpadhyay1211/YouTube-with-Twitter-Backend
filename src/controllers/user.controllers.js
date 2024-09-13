@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary,deleteFromCloudinary } from "../services/cloudinary.service.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const registerUser = asyncHandler(async (req, res) => {
   const { userName, fullName, email, password } = req.body;
@@ -52,7 +53,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
   // Create the user
   const userCreated = await User.create({
-    userName,
+    userName : userName.toLowerCase(),
     fullName,
     email,
     password,
@@ -348,25 +349,149 @@ const updateEmail = asyncHandler(async(req,res)=>{
   //Design this functionality later on with two step email verification
 })
 
-const getUserChannel = asyncHandler (async(req,res)=>{
-  const {userName} = req.params
-  const user = await User.findOne({userName})
-  if(!user) throw new ApiError(404,"User Not Found")
+const getUserChannel = asyncHandler(async (req, res) => {
+  const { userName } = req.params;
 
-  await user.aggrigrate([
-     {
+  // Aggregate to get channel details, subscribers, and uploaded videos
+  const returnArray = await User.aggregate([
+    {
+      $match: { userName: userName }
+    },
+    {
       $lookup: {
-        from: "subcriptions",
+        from: "subscriptions",
         localField: "_id",
-        foreignField: "channel",
-        as : "subscriber"
+        foreignField: "subscriber",
+        as: "subscriberCount"
       }
     },
     {
-      
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribedToCount"
+      }
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "_id",
+        foreignField: "owner",
+        as: "videoUploadedCount"
+      }
+    },
+    {
+      $addFields: {
+        subscribersCount: { $size: "$subscriberCount" },
+        channelsSubscribedToCount: { $size: "$subscribedToCount" },
+        videosUploadedCount: { $size: "$videoUploadedCount" },
+        isSubscribed: {
+          $cond: {
+            if: { 
+              $and: [
+                { $ifNull: [req.user, false] }, 
+                { $in: [req.user?._id, "$subscriberCount.subscriber"] }
+              ] 
+            },
+            then: true,
+            else: false
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        userName: 1,
+        email: 1,
+        fullName: 1,
+        avatar: 1,
+        coverImage: 1,
+        createdAt: 1,
+        subscribersCount: 1,
+        channelsSubscribedToCount: 1,
+        videosUploadedCount: 1,
+        isSubscribed: 1
+      }
     }
-  ])
-})
+  ]);
+
+  if (!channel?.length) {
+    throw new ApiError(404, "Channel does not exist");
+  }
+
+  const channelData = returnArray[0];
+
+  return res.status(200).json(
+    new ApiResponse(200, channelData, "User channel fetched successfully")
+  );
+});
+
+
+const getUserWatchHistory = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  const returnArray = await User.aggregate([
+    {
+      $match: {
+        _id: mongoose.Types.ObjectId(userId)
+      }
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner"
+            }
+          },
+          {
+            $addFields: {
+              owner: { $arrayElemAt: ["$owner", 0] } // Extract the first element from the owner array
+            }
+          },
+          {
+            $project: {
+              title: 1,
+              description: 1,
+              createdAt: 1,
+              "owner.userName": 1,
+              "owner.email": 1,
+              "owner.fullName": 1,
+              "owner.avatar": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      $project: {
+        watchHistory: 1
+      }
+    }
+  ]);
+
+  // Check if the result exists and has data
+  if (!returnArray || !returnArray.length || !returnArray[0].watchHistory.length) {
+    return res.status(200).json(
+      new ApiResponse(200, [], "No watch history found")
+    );
+  }
+
+  const watchHistory = returnArray[0].watchHistory;
+
+  return res.status(200).json(
+    new ApiResponse(200, watchHistory, "Watch history fetched successfully")
+  );
+});
+
 
 
 
@@ -378,5 +503,7 @@ export { registerUser,
    updateUserAvatar,
    updateUserCoverImage,
    updateUserPassword,
-   updateFullName
+   updateFullName,
+   getUserChannel,
+   getUserWatchHistory
   };
