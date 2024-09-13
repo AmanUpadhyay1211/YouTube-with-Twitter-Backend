@@ -48,6 +48,8 @@ const registerUser = asyncHandler(async (req, res) => {
     );
   }
 
+  //TODO: Add two step email verification cheak here using nodemailer otp
+
   // Create the user
   const userCreated = await User.create({
     userName,
@@ -321,16 +323,49 @@ const updateUserPassword = asyncHandler(async(req,res)=>{
 
       return res
       .status(200)
-      .json(200,{},"Password Updated Successfully")
+      .json(200,userWithUpdatedPassword,"Password Updated Successfully")
       
 })
 
 
-const updateUserAccountDetails = asyncHandler(async(req,res)=>{
+const updateFullName = asyncHandler(async(req,res)=>{
   const userID = req.user._id
-  /*I will degin this functionality later I am confuse that how i design this functionality
-  1: Make a single funtion to change all account details and it will only change the details which it will get from frontend but the problem is i want to perform some checks on some field, for example want to send an otp f user want to change email EventCounts..
-  2: Make a separate function for each details like updateName,updateEmail,updatePhone it will be more clean and easy to use but isn't it makes my code lengthy. */
+ const {newName,password} = req.body
+ if(!newName) throw new ApiError(400,"Name field is required")
+  const user = await User.findById(userID)
+ if(!user) throw new ApiError(404,"Cannot find User")
+  const isMatch = await user.isPasswordCorrect(oldPassword);
+ if(!isMatch) throw new ApiError(400,"Invalid Old Password")
+  const userWithUpdatedName = await User.findByIdAndUpdate(userID,
+{fullName:newName},
+{new:true}).select("-password -refreshToken")
+return res
+      .status(200)
+      .json(200,userWithUpdatedName,"Password Updated Successfully")
+})
+
+const updateEmail = asyncHandler(async(req,res)=>{
+  //Design this functionality later on with two step email verification
+})
+
+const getUserChannel = asyncHandler (async(req,res)=>{
+  const {userName} = req.params
+  const user = await User.findOne({userName})
+  if(!user) throw new ApiError(404,"User Not Found")
+
+  await user.aggrigrate([
+     {
+      $lookup: {
+        from: "subcriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as : "subscriber"
+      }
+    },
+    {
+      
+    }
+  ])
 })
 
 
@@ -343,4 +378,5 @@ export { registerUser,
    updateUserAvatar,
    updateUserCoverImage,
    updateUserPassword,
+   updateFullName
   };
