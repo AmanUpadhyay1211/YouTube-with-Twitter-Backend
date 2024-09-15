@@ -18,6 +18,8 @@ const subscriptionSchema = new Schema(
     }
 )
 
+subscriptionSchema.plugin(mongooseAggregatePaginate);
+
 export const Subscription = model("Subscription", subscriptionSchema);
 
 

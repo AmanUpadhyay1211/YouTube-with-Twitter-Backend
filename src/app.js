@@ -15,9 +15,10 @@ app.use(express.static("public")); //To store some static data avalaible for all
 
 // import routers
 import userRouter from "./routes/user.routes.js";
+import videoRouter from "./routes/video.routes.js";
 
 app.use("/api/v1/users", userRouter);
-
+app.use("/api/v1/videos",videoRouter)
 //https://localhost:8000/api/v1/users/register
 
 export { app };

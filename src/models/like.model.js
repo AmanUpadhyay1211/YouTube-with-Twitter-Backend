@@ -27,4 +27,6 @@ const likeSchema = new Schema(
     }
 )
 
+likeSchema.plugin(mongooseAggregatePaginate);
+
 export const Like = model("Like", likeSchema);

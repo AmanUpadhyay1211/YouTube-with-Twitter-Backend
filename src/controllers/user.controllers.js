@@ -355,7 +355,7 @@ const getUserChannel = asyncHandler(async (req, res) => {
   // Aggregate to get channel details, subscribers, and uploaded videos
   const returnArray = await User.aggregate([
     {
-      $match: { userName: userName }
+      $match: { userName: username }
     },
     {
       $lookup: {
@@ -378,14 +378,31 @@ const getUserChannel = asyncHandler(async (req, res) => {
         from: "videos",
         localField: "_id",
         foreignField: "owner",
-        as: "videoUploadedCount"
+        as: "channelVideos",
+        pipeline: [
+          {
+            $match: { isPublic: true }  // Only count public videos
+          },
+          {
+            $group: {
+              _id: null,
+              totalViews: { $sum: "$views" }, // Sum of views Ki yahha error aa sakta hai
+              videosUploadedCount: { $sum: 1 } // Total count of videos
+            }
+          },
+          {
+            $addFields : {
+              totalViews: { $ifNull: [ "$totalViews", 0 ] },
+              videosUploadedCount: { $ifNull: [ "$videosUploadedCount", 0 ] } 
+            }
+          }
+        ]
       }
     },
     {
       $addFields: {
         subscribersCount: { $size: "$subscriberCount" },
         channelsSubscribedToCount: { $size: "$subscribedToCount" },
-        videosUploadedCount: { $size: "$videoUploadedCount" },
         isSubscribed: {
           $cond: {
             if: { 
@@ -411,12 +428,13 @@ const getUserChannel = asyncHandler(async (req, res) => {
         subscribersCount: 1,
         channelsSubscribedToCount: 1,
         videosUploadedCount: 1,
-        isSubscribed: 1
+        isSubscribed: 1,
+        totalViews: 1
       }
     }
   ]);
 
-  if (!channel?.length) {
+  if (!returnArray?.length) {
     throw new ApiError(404, "Channel does not exist");
   }
 
@@ -505,5 +523,6 @@ export { registerUser,
    updateUserPassword,
    updateFullName,
    getUserChannel,
-   getUserWatchHistory
+   getUserWatchHistory,
+   updateEmail
   };
