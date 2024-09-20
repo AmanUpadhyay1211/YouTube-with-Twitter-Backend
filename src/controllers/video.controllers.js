@@ -44,8 +44,10 @@ const deleteVideo = asyncHandler(async(req,res)=>{
     if(!user) throw new ApiError(404, "Unauthorized Request")
     const {videoId} = req.params
   if(!videoId) throw new ApiError(404, "Missing required field to perform video deletion")
+    const video = await Video.findById(videoId)
+    if(video.owner.toString() !== user._id.toString()) throw new ApiError(403, "You are not the owner of this video")
    const deletion = await Video.findByIdAndDelete(videoId)
-  if(!deletion) throw new ApiError(500,"Internal server error while performing video deletionn")
+   if(!deletion) throw new ApiError(500,"Internal server error while performing video deletionn")
     await  deleteFromCloudinary(videoFile.url)
 
   res.status(200).json(
@@ -149,8 +151,36 @@ const getVideoByID = asyncHandler (async(req,res)=>{
     
 })
 
-const getAllVideos = asyncHandler (async(req,res)=>{
-    //Dekh saari video to ek saath le nhi sakte kyuki youtube pe billions of video hongi toh hum kuch selective 15-20 video ek baar mai fetch karenge then jabuser scroon karke pura niche pahuch jaye tab aur 15-20 search kar lenge and soo on to ussi hisab se iss controller ko design karna hai!!
-})
+const getAllVideos = asyncHandler(async (req, res) => {
+  // Set default pagination values (page 1, 20 videos per page)
+  const { page = 1, limit = 20 } = req.query;
+  
+  const query = {}; // You can add more filters here based on categories, tags, etc.
+
+  try {
+    const videos = await Video.find(query)
+      .limit(parseInt(limit)) 
+      .skip((page - 1) * limit); 
+    
+    const totalVideos = await Video.countDocuments(query);
+    
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          videos,
+          pagination: {
+            total: totalVideos,
+            page: parseInt(page),
+            limit: parseInt(limit),
+          },
+        },
+        "Videos fetched successfully"
+      )
+    );
+  } catch (error) {
+    throw new ApiError(500, "Internal Server Error while fetching videos");
+  }
+});
 
 export {uploadVideo,deleteVideo,updateVideoDetails,updateVideoThumbnail,getVideoByID,getAllVideos}

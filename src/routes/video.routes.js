@@ -5,14 +5,14 @@ import { uploadVideo, deleteVideo, updateVideoDetails, updateVideoThumbnail, get
 
 const videoRouter = Router()
 
-videoRouter.route("/get-all-vidoes").get(getAllVideos)
-videoRouter.route("/get-vidoe").get(getVideoByID)
+videoRouter.route("/get-all-videos").get(getAllVideos)
+videoRouter.route("/get-video").get(getVideoByID)
 
-// Secured Routes
+// Secured Routes - require JWT authentication
 videoRouter.route("/upload").post(upload.single("video"), verifyAccessToken, uploadVideo)
 videoRouter.route("/delete").get(verifyAccessToken,deleteVideo)
-videoRouter.route("/update-details").post(verifyAccessToken,updateVideoDetails)
-videoRouter.route("/update-thumbnail").post(verifyAccessToken,updateVideoThumbnail)
+videoRouter.route("/update-details").patch(verifyAccessToken,updateVideoDetails)
+videoRouter.route("/update-thumbnail").patch(verifyAccessToken,updateVideoThumbnail)
 
 
 export default videoRouter;
