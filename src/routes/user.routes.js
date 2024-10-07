@@ -34,14 +34,14 @@ userRouter.route("/login").post(loginUser);
 userRouter.route("/:userName").get(getUserChannel);
 
 // Secured Routes - require JWT authentication
-userRouter.route("/logout").get(verifyAccessToken, logoutUser);
+userRouter.route("/logout").post(verifyAccessToken, logoutUser); // Get method will not work --> expolore yourself
 userRouter.route("/refresh-access-token").post(refreshAccessToken);
-userRouter.route("/current-user").get(verifyAccessToken, getCurrentUser);
+userRouter.route("/current-user").post(verifyAccessToken, getCurrentUser);
 userRouter.route("/avatar-update").patch(verifyAccessToken, upload.single("avatar"), updateUserAvatar);
 userRouter.route("/cover-update").patch(verifyAccessToken, upload.single("coverImage"),updateUserCoverImage);
 userRouter.route("/password-update").patch(verifyAccessToken, updateUserPassword);
 userRouter.route("/fullname-update").patch(verifyAccessToken, updateFullName);
 userRouter.route("/email-update").patch(verifyAccessToken, updateEmail);
-userRouter.route("/watch-history").get(verifyAccessToken, getUserWatchHistory);
+userRouter.route("/watch-history").post(verifyAccessToken, getUserWatchHistory);
 
-export default userRouter;
+export default userRouter; 

@@ -5,6 +5,7 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary,deleteFromCloudinary } from "../services/cloudinary.service.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import envConf from "../envConf/envConf.js";
 
 const registerUser = asyncHandler(async (req, res) => {
   const { userName, fullName, email, password } = req.body;
@@ -305,44 +306,46 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 });
 
 
-const updateUserPassword = asyncHandler(async(req,res)=>{
-      const userID = req.user._id
-      const {oldPassword , newPassword}= req.body
-      if(!oldPassword || !newPassword){
-        throw new ApiError(400,"Passwords field are required")
-      }
-      const user = await User.findById(userID)
-      if(!user) throw new ApiError(404,"Cannot find User")
-     
-    const isMatch = await user.isPasswordCorrect(oldPassword);
-    if(!isMatch) throw new ApiError(400,"Invalid Old Password")
+const updateUserPassword = asyncHandler(async (req, res) => {
+  const userID = req.user._id;
+  const { oldPassword, newPassword } = req.body;
 
-      const userWithUpdatedPassword = await User.findByIdAndUpdate(userID,
-        {password:newPassword},
-        {new:true}
-      ).select("-password -refreshToken")
+  if (!oldPassword || !newPassword) {
+    throw new ApiError(400, "Passwords field are required");
+  }
 
-      return res
-      .status(200)
-      .json(200,userWithUpdatedPassword,"Password Updated Successfully")
-      
-})
+  const user = await User.findById(userID);
+  if (!user) throw new ApiError(404, "Cannot find User");
+
+  const isMatch = await user.isPasswordCorrect(oldPassword);
+  if (!isMatch) throw new ApiError(400, "Invalid Old Password");
+
+  // Update the password directly on the user and call `save()`
+  user.password = newPassword;
+
+  await user.save(); // This will trigger the `pre("save")` hook to hash the password
+
+  return res.status(200).json({
+    status: 200,
+    user: { userName: user.userName, email: user.email }, // avoid sending sensitive fields
+    message: "Password Updated Successfully",
+  });
+});
+
 
 
 const updateFullName = asyncHandler(async(req,res)=>{
   const userID = req.user._id
  const {newName,password} = req.body
- if(!newName) throw new ApiError(400,"Name field is required")
+ if(!newName || !password) throw new ApiError(400,"Name & password field is required")
   const user = await User.findById(userID)
  if(!user) throw new ApiError(404,"Cannot find User")
-  const isMatch = await user.isPasswordCorrect(oldPassword);
+  const isMatch = await user.isPasswordCorrect(password);
  if(!isMatch) throw new ApiError(400,"Invalid Old Password")
   const userWithUpdatedName = await User.findByIdAndUpdate(userID,
 {fullName:newName},
 {new:true}).select("-password -refreshToken")
-return res
-      .status(200)
-      .json(200,userWithUpdatedName,"Password Updated Successfully")
+return res.status(200).json(new ApiResponse(200,userWithUpdatedName,"Password Updated Successfully"))
 })
 
 const updateEmail = asyncHandler(async(req,res)=>{
@@ -355,7 +358,7 @@ const getUserChannel = asyncHandler(async (req, res) => {
   // Aggregate to get channel details, subscribers, and uploaded videos
   const returnArray = await User.aggregate([
     {
-      $match: { userName: username }
+      $match: { userName: userName }
     },
     {
       $lookup: {
@@ -452,7 +455,7 @@ const getUserWatchHistory = asyncHandler(async (req, res) => {
   const returnArray = await User.aggregate([
     {
       $match: {
-        _id: mongoose.Types.ObjectId(userId)
+        _id: new mongoose.Types.ObjectId(userId)
       }
     },
     {
@@ -472,7 +475,7 @@ const getUserWatchHistory = asyncHandler(async (req, res) => {
           },
           {
             $addFields: {
-              owner: { $arrayElemAt: ["$owner", 0] } // Extract the first element from the owner array
+              owner: { $arrayElemAt: ["$owner", 0] }
             }
           },
           {
@@ -496,7 +499,9 @@ const getUserWatchHistory = asyncHandler(async (req, res) => {
     }
   ]);
 
-  // Check if the result exists and has data
+  // Log the return array to debug
+  console.log("Aggregation Result:", returnArray);
+
   if (!returnArray || !returnArray.length || !returnArray[0].watchHistory.length) {
     return res.status(200).json(
       new ApiResponse(200, [], "No watch history found")
@@ -513,6 +518,7 @@ const getUserWatchHistory = asyncHandler(async (req, res) => {
 
 
 
+
 export { registerUser,
    loginUser, 
    logoutUser, 
@@ -524,5 +530,5 @@ export { registerUser,
    updateFullName,
    getUserChannel,
    getUserWatchHistory,
-   updateEmail
+   updateEmail //ISsee banana hai abhi
   };

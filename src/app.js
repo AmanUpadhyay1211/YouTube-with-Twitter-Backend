@@ -3,8 +3,29 @@ import { sizeLimit } from "./constants.js";
 import envConf from "./envConf/envConf.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import logger from "./utils/logger.js";
+import morgan from "morgan";
+
 
 const app = express();
+
+//Custom logger
+const morganFormat = ":method :url :status :response-time ms";
+app.use(
+  morgan(morganFormat, {
+    stream: {
+      write: (message) => {
+        const logObject = {
+          method: message.split(" ")[0],
+          url: message.split(" ")[1],
+          status: message.split(" ")[2],
+          responseTime: message.split(" ")[3],
+        };
+        logger.info(JSON.stringify(logObject));
+      },
+    },
+  })
+);
 
 // Setting up the configuration to accept multiple kind of data formats
 app.use(express.json({ limit: sizeLimit })); // For JSON data

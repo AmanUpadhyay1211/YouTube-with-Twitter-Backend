@@ -14,6 +14,10 @@ const verifyAccessToken = asyncHandler(async (req, res, next) => {
 
     const decodedToken = jwt.verify(token, envConf.accessTokenSecret); 
 
+    if (!decodedToken || !decodedToken._id) {
+      throw new ApiError(401, "Unauthorized: Invalid token");
+    }
+
     const user = await User.findById(decodedToken._id).select("-password -refreshToken");
 
     if (!user) {
@@ -23,8 +27,10 @@ const verifyAccessToken = asyncHandler(async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
+    console.error("Authentication Error:", error.message);
     throw new ApiError(401, "Unauthorized: Invalid token or user");
   }
 });
+
 
 export { verifyAccessToken };
