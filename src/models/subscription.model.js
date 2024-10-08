@@ -19,6 +19,14 @@ const subscriptionSchema = new Schema(
   }
 );
 
+// Custom validation to prevent subscribing to oneself
+subscriptionSchema.pre('save', function (next) {
+  if (this.subscriber.equals(this.channel)) {
+    return next(new Error("A user cannot subscribe to themselves."));
+  }
+  next();
+});
+
 // Apply a unique compound index to prevent duplicate subscriptions
 subscriptionSchema.index({ subscriber: 1, channel: 1 }, { unique: true });
 
