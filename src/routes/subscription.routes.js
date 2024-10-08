@@ -5,8 +5,8 @@ import { subscribe,unsubscribe } from "../controllers/subscription.controllers.j
 const subscriptionRouter = Router()
 
 // Secured Routes - require JWT authentication
-subscriptionRouter.route("/create").post( verifyAccessToken, subscribe)
-subscriptionRouter.route("/delete").get(verifyAccessToken,unsubscribe)
+subscriptionRouter.route("/subscribe/:channelId").post( verifyAccessToken, subscribe)
+subscriptionRouter.route("/unsubscribe/:channelId").delete(verifyAccessToken,unsubscribe)
 
 
 export default subscriptionRouter;

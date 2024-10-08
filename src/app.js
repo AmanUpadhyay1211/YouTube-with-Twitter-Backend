@@ -10,7 +10,8 @@ import morgan from "morgan";
 const app = express();
 
 //Custom logger
-const morganFormat = ":method :url :status :response-time ms";
+const morganFormat = ":method :url :status :response-time ms :remote-addr";
+
 app.use(
   morgan(morganFormat, {
     stream: {
@@ -20,12 +21,14 @@ app.use(
           url: message.split(" ")[1],
           status: message.split(" ")[2],
           responseTime: message.split(" ")[3],
+          ip: message.split(" ")[4], // Adding IP from :remote-addr
         };
         logger.info(JSON.stringify(logObject));
       },
     },
   })
-);
+); 
+
 
 // Setting up the configuration to accept multiple kind of data formats
 app.use(express.json({ limit: sizeLimit })); // For JSON data

@@ -10,6 +10,10 @@ const tweetSchema = new Schema(
             type : Schema.Types.ObjectId,
             ref : 'User',
             required: true,
+        },
+        isEdited : {
+            type : Boolean,
+            default : false
         }
     },
     {

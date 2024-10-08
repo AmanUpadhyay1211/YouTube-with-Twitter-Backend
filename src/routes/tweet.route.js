@@ -4,13 +4,13 @@ import { createTweet , deleteTweet,getAllUserTweets,getTweetById,updateTweet} fr
 
 const tweetRouter = Router()
 
-tweetRouter.route("/get-all-tweet").get(getAllUserTweets)
-tweetRouter.route("/get-tweet").get(getTweetById)
+tweetRouter.route("/get-all-tweet/:userName").get(getAllUserTweets)
+tweetRouter.route("/get-tweet/:tweetId").get(getTweetById)
 
 // Secured Routes - require JWT authentication
 tweetRouter.route("/create").post( verifyAccessToken, createTweet)
-tweetRouter.route("/delete").get(verifyAccessToken,deleteTweet)
-tweetRouter.route("/update").patch(verifyAccessToken,updateTweet)
+tweetRouter.route("/delete/:tweetId").delete(verifyAccessToken,deleteTweet)
+tweetRouter.route("/update/:tweetId").patch(verifyAccessToken,updateTweet)
 
 
 export default tweetRouter;

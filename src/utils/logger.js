@@ -19,6 +19,7 @@ const logger = createLogger({
     new transports.File({
       filename: "app.log",
       format: combine(timestamp(), fileLogFormat), // Log errors to file with custom format
+      options: { flags: 'w' }, // To rewrite everytime server starts
     }),
   ],
 });

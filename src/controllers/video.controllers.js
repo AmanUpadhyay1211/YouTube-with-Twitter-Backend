@@ -205,6 +205,8 @@ const getVideoByID = asyncHandler(async (req, res) => {
       "Video not found: No video exists with the provided ID."
     );
 
+    //Handle Like and comment by aggregation pipeline and return it
+
   res
     .status(200)
     .json(new ApiResponse(200, videoInDB, "Video fetched Successfully"));

@@ -1,27 +1,31 @@
-import { model,Schema } from "mongoose";
+import { model, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 const subscriptionSchema = new Schema(
-    {
-        subscriber : {
-            type : Schema.Types.ObjectId,
-            ref : 'User',
-            required: true,
-        },
-        channel : {
-            type : Schema.Types.ObjectId,
-            ref : 'User',
-            required: true,
-        }
+  {
+    subscriber: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
     },
-    {
-        timestamps:true
+    channel: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
     }
-)
+  },
+  {
+    timestamps: true
+  }
+);
+
+// Apply a unique compound index to prevent duplicate subscriptions
+subscriptionSchema.index({ subscriber: 1, channel: 1 }, { unique: true });
 
 subscriptionSchema.plugin(mongooseAggregatePaginate);
 
 export const Subscription = model("Subscription", subscriptionSchema);
+
 
 
 /*Everytime a user subscribe a user it creates a new document everytime in which subscriber field get the name of user which got subscribed and channel field got the name of user which subscribed the other user for example user "aman" subscribed "all things" so the document formed something like this:
