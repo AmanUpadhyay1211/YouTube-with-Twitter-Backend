@@ -2,245 +2,291 @@ import { Video } from "../models/video.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
+import logger from "../utils/logger.js";
 import {
   uploadOnCloudinary,
   deleteFromCloudinary,
 } from "../services/cloudinary.service.js";
 
 const uploadVideo = asyncHandler(async (req, res) => {
-  const user = req.user;
-  if (!user) throw new ApiError(404, "Unauthorized Request");
-  const videoFileLocalPath = req.files?.["videoFile"]?.[0]?.path;
-  const thumbnailLocalPath = req.files?.["thumbnail"]?.[0]?.path;
-  const { title, description, isPublic } = req.body;
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(404, "Unauthorized Request");
+    const videoFileLocalPath = req.files?.["videoFile"]?.[0]?.path;
+    const thumbnailLocalPath = req.files?.["thumbnail"]?.[0]?.path;
+    const { title, description, isPublic } = req.body;
 
-  if (
-    !videoFileLocalPath ||
-    !thumbnailLocalPath ||
-    !title ||
-    !description ||
-    !isPublic
-  ) {
-    throw new ApiError(400, "Missing required field");
+    if (
+      !videoFileLocalPath ||
+      !thumbnailLocalPath ||
+      !title ||
+      !description ||
+      !isPublic
+    ) {
+      throw new ApiError(400, "Missing required field");
+    }
+
+    const videoFile = await uploadOnCloudinary(videoFileLocalPath);
+    if (!videoFile)
+      throw new ApiError(
+        500,
+        "Internal server Error while Uploading yout video"
+      );
+    const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+    if (!thumbnail)
+      throw new ApiError(
+        500,
+        "Internal server Error while Uploading the thumbnail"
+      );
+
+    const video = await Video.create({
+      videoFile: videoFile.secure_url,
+      thumbnail: thumbnail.secure_url,
+      title,
+      description,
+      duration: videoFile.duration,
+      isPublic,
+      owner: user._id,
+    });
+
+    return res
+      .status(201)
+      .json(new ApiResponse(201, video, "Video Uploaded Successfully"));
+  } catch (error) {
+    console.log(error);
+    logger.error(error.message);
   }
-
-  const videoFile = await uploadOnCloudinary(videoFileLocalPath);
-  if (!videoFile)
-    throw new ApiError(500, "Internal server Error while Uploading yout video");
-  const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
-  if (!thumbnail)
-    throw new ApiError(
-      500,
-      "Internal server Error while Uploading the thumbnail"
-    );
-
-  const video = await Video.create({
-    videoFile: videoFile.secure_url,
-    thumbnail: thumbnail.secure_url,
-    title,
-    description,
-    duration: videoFile.duration,
-    isPublic,
-    owner: user._id,
-  });
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, video, "Video Uploaded Successfully"));
 });
 
 const deleteVideo = asyncHandler(async (req, res) => {
-  const user = req.user;
-  if (!user) throw new ApiError(404, "Unauthorized Request");
-  const { videoId } = req.params;
-  if (!videoId)
-    throw new ApiError(404, "Missing required field to perform video deletion");
-  const video = await Video.findById(videoId);
-  if (video.owner.toString() !== user._id.toString())
-    throw new ApiError(403, "You are not the owner of this video");
-  const deletion = await Video.findByIdAndDelete(videoId);
-  if (!deletion)
-    throw new ApiError(
-      500,
-      "Internal server error while performing video deletionn"
+  try {
+    const user = req.user;
+    if (!user) throw new ApiError(404, "Unauthorized Request");
+    const { videoId } = req.params;
+    if (!videoId)
+      throw new ApiError(
+        404,
+        "Missing required field to perform video deletion"
+      );
+    const video = await Video.findById(videoId);
+    if (video.owner.toString() !== user._id.toString())
+      throw new ApiError(403, "You are not the owner of this video");
+    const deletion = await Video.findByIdAndDelete(videoId);
+    if (!deletion)
+      throw new ApiError(
+        500,
+        "Internal server error while performing video deletionn"
+      );
+    const deletionFromCloudinary = await deleteFromCloudinary(
+      deletion.videoFile
     );
-  const deletionFromCloudinary = await deleteFromCloudinary(deletion.videoFile);
-  await deleteFromCloudinary(deletion.thumbnail);
+    await deleteFromCloudinary(deletion.thumbnail);
 
-  if (!deletionFromCloudinary)
-    throw new ApiError(500, "Error while deleting video from cloudinary");
+    if (!deletionFromCloudinary)
+      throw new ApiError(500, "Error while deleting video from cloudinary");
 
-  res.status(200).json(new ApiResponse(200, "Video deleted successfully"));
+    res.status(200).json(new ApiResponse(200, "Video deleted successfully"));
+  } catch (error) {
+    console.log(error);
+    logger.error(error.message);
+  }
 });
 
 const updateVideoDetails = asyncHandler(async (req, res) => {
-  const user = req.user;
-  if (!user)
-    throw new ApiError(401, "Unauthorized request: User not authenticated.");
+  try {
+    const user = req.user;
+    if (!user)
+      throw new ApiError(401, "Unauthorized request: User not authenticated.");
 
-  const { videoId } = req.params;
-  if (!videoId) throw new ApiError(400, "Bad request: Video ID is required.");
+    const { videoId } = req.params;
+    if (!videoId) throw new ApiError(400, "Bad request: Video ID is required.");
 
-  const videoInDB = await Video.findById(videoId);
-  if (!videoInDB)
-    throw new ApiError(
-      404,
-      "Video not found: No video exists with the provided ID."
+    const videoInDB = await Video.findById(videoId);
+    if (!videoInDB)
+      throw new ApiError(
+        404,
+        "Video not found: No video exists with the provided ID."
+      );
+
+    // Check if the authenticated user is the owner of the video
+    if (videoInDB.owner.toString() !== user._id.toString()) {
+      throw new ApiError(
+        403,
+        "Forbidden: You are not authorized to update this video."
+      );
+    }
+
+    const { title, description, isPublic } = req.body;
+
+    // Validate required fields
+    if (!title?.trim() || !description?.trim() || isPublic === undefined) {
+      throw new ApiError(
+        400,
+        "Bad request: Title, description, and isPublic are required fields."
+      );
+    }
+
+    const updatedVideo = await Video.findByIdAndUpdate(
+      videoId,
+      {
+        title,
+        description,
+        isPublic,
+      },
+      { new: true }
     );
 
-  // Check if the authenticated user is the owner of the video
-  if (videoInDB.owner.toString() !== user._id.toString()) {
-    throw new ApiError(
-      403,
-      "Forbidden: You are not authorized to update this video."
-    );
+    if (!updatedVideo)
+      throw new ApiError(
+        500,
+        "Internal server error: Failed to update video details."
+      );
+
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          updatedVideo,
+          "Video details updated successfully."
+        )
+      );
+  } catch (error) {
+    console.log(error);
+    logger.error(error.message);
   }
-
-  const { title, description, isPublic } = req.body;
-
-  // Validate required fields
-  if (!title?.trim() || !description?.trim() || isPublic === undefined) {
-    throw new ApiError(
-      400,
-      "Bad request: Title, description, and isPublic are required fields."
-    );
-  }
-
-  const updatedVideo = await Video.findByIdAndUpdate(
-    videoId,
-    {
-      title,
-      description,
-      isPublic,
-    },
-    { new: true }
-  );
-
-  if (!updatedVideo)
-    throw new ApiError(
-      500,
-      "Internal server error: Failed to update video details."
-    );
-
-  res
-    .status(200)
-    .json(
-      new ApiResponse(200, updatedVideo, "Video details updated successfully.")
-    );
 });
 
 const updateVideoThumbnail = asyncHandler(async (req, res) => {
-  const user = req.user;
-  if (!user)
-    throw new ApiError(401, "Unauthorized request: User not authenticated.");
+  try {
+    const user = req.user;
+    if (!user)
+      throw new ApiError(401, "Unauthorized request: User not authenticated.");
 
-  const { videoId } = req.params;
-  if (!videoId) throw new ApiError(400, "Bad request: Video ID is required.");
+    const { videoId } = req.params;
+    if (!videoId) throw new ApiError(400, "Bad request: Video ID is required.");
 
-  const videoInDB = await Video.findById(videoId);
-  if (!videoInDB)
-    throw new ApiError(
-      404,
-      "Video not found: No video exists with the provided ID."
+    const videoInDB = await Video.findById(videoId);
+    if (!videoInDB)
+      throw new ApiError(
+        404,
+        "Video not found: No video exists with the provided ID."
+      );
+
+    // Check if the authenticated user is the owner of the video
+    if (videoInDB.owner.toString() !== user._id.toString()) {
+      throw new ApiError(
+        403,
+        "Forbidden: You are not authorized to update this video."
+      );
+    }
+
+    // Ensure a thumbnail file is provided
+    const newThumbnailLocalPath = req.file?.path;
+    if (!newThumbnailLocalPath)
+      throw new ApiError(400, "Bad request: Thumbnail file is missing.");
+
+    const response = await uploadOnCloudinary(newThumbnailLocalPath);
+    if (!response)
+      throw new ApiError(
+        500,
+        "Internal server error: Failed to upload thumbnail to Cloudinary"
+      );
+
+    const updatedVideoWithOldThumbnail = await Video.findByIdAndUpdate(
+      videoId,
+      {
+        thumbnail: response.secure_url,
+      }
     );
 
-  // Check if the authenticated user is the owner of the video
-  if (videoInDB.owner.toString() !== user._id.toString()) {
-    throw new ApiError(
-      403,
-      "Forbidden: You are not authorized to update this video."
+    if (!updatedVideoWithOldThumbnail)
+      throw new ApiError(
+        500,
+        "Internal server error: Failed to update video thumbnail."
+      );
+
+    //ADd logic to delete it from cloudinary
+    const thumbnailDeletionFromCLoudinary = await deleteFromCloudinary(
+      updatedVideoWithOldThumbnail.thumbnail
     );
+
+    if (!thumbnailDeletionFromCLoudinary)
+      throw new ApiError(500, "Error while deleting thumbnail from cloudinary");
+
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          updatedVideoWithOldThumbnail,
+          "Video thumbnail updated successfully."
+        )
+      );
+  } catch (error) {
+    console.log(error);
+    logger.error(error.message);
   }
-
-  // Ensure a thumbnail file is provided
-  const newThumbnailLocalPath = req.file?.path;
-  if (!newThumbnailLocalPath)
-    throw new ApiError(400, "Bad request: Thumbnail file is missing.");
-
-  const response = await uploadOnCloudinary(newThumbnailLocalPath);
-  if (!response)
-    throw new ApiError(
-      500,
-      "Internal server error: Failed to upload thumbnail to Cloudinary"
-    );
-
-  const updatedVideoWithOldThumbnail = await Video.findByIdAndUpdate(videoId, {
-    thumbnail: response.secure_url,
-  });
-
-  if (!updatedVideoWithOldThumbnail)
-    throw new ApiError(
-      500,
-      "Internal server error: Failed to update video thumbnail."
-    );
-
-  //ADd logic to delete it from cloudinary
-  const thumbnailDeletionFromCLoudinary = await deleteFromCloudinary(
-    updatedVideoWithOldThumbnail.thumbnail
-  );
-
-  if (!thumbnailDeletionFromCLoudinary)
-    throw new ApiError(500, "Error while deleting thumbnail from cloudinary");
-
-  res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        updatedVideoWithOldThumbnail,
-        "Video thumbnail updated successfully."
-      )
-    );
 });
 
 const getVideoByID = asyncHandler(async (req, res) => {
-  const { videoId } = req.params;
-  if (!videoId) throw new ApiError(400, "Bad request: Video ID is required.");
+  try {
+    const { videoId } = req.params;
+    if (!videoId) throw new ApiError(400, "Bad request: Video ID is required.");
 
-  // Find the video in the database
-  const videoInDB = await Video.findById(videoId);
-  if (!videoInDB)
-    throw new ApiError(
-      404,
-      "Video not found: No video exists with the provided ID."
-    );
+    // Find the video in the database
+    const videoInDB = await Video.findById(videoId);
+    if (!videoInDB)
+      throw new ApiError(
+        404,
+        "Video not found: No video exists with the provided ID."
+      );
 
     //Handle Like and comment by aggregation pipeline and return it
 
-  res
-    .status(200)
-    .json(new ApiResponse(200, videoInDB, "Video fetched Successfully"));
+    res
+      .status(200)
+      .json(new ApiResponse(200, videoInDB, "Video fetched Successfully"));
+  } catch (error) {
+    console.log(error);
+    logger.error(error.message);
+  }
 });
 
 const getAllVideos = asyncHandler(async (req, res) => {
   // Set default pagination values (page 1, 20 videos per page)
-  const { page = 1, limit = 20 } = req.query;
-
-  const query = {}; // You can add more filters here based on categories, tags, etc.
-
   try {
-    const videos = await Video.find(query)
-      .limit(parseInt(limit))
-      .skip((page - 1) * limit);
+    const { page = 1, limit = 20 } = req.query;
 
-    const totalVideos = await Video.countDocuments(query);
+    const query = {}; // You can add more filters here based on categories, tags, etc.
 
-    res.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          videos,
-          pagination: {
-            total: totalVideos,
-            page: parseInt(page),
-            limit: parseInt(limit),
+    try {
+      const videos = await Video.find(query)
+        .limit(parseInt(limit))
+        .skip((page - 1) * limit);
+
+      const totalVideos = await Video.countDocuments(query);
+
+      res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            videos,
+            pagination: {
+              total: totalVideos,
+              page: parseInt(page),
+              limit: parseInt(limit),
+            },
           },
-        },
-        "Videos fetched successfully"
-      )
-    );
+          "Videos fetched successfully"
+        )
+      );
+    } catch (error) {
+      throw new ApiError(500, "Internal Server Error while fetching videos");
+    }
   } catch (error) {
-    throw new ApiError(500, "Internal Server Error while fetching videos");
+    console.log(error);
+    logger.error(error.message);
   }
 });
 

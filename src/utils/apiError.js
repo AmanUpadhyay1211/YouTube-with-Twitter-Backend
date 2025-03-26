@@ -10,7 +10,6 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.success = false;
-    this.message = message;
     this.statusCode = statusCode;
     this.errors = errors;
     this.data = data;
